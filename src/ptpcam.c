@@ -210,7 +210,7 @@ ptpcam_siginthandler(int signum)
 }
 
 static short
-ptp_read_func (unsigned char *bytes, unsigned int size, void *data)
+ptp_read_func (unsigned char *bytes, uint64_t size, void *data)
 {
 	int result=-1;
 	PTP_USB *ptp_usb=(PTP_USB *)data;
@@ -729,7 +729,7 @@ download:
 		}
 		printf ("Saving file: \"%s\" ",filename);
 		fflush(NULL);
-		ret=ptp_getobject(&params,handle,&image);
+		ret=ptp_getobject(&params,handle,&image, 0);
 		munmap(image,oi.ObjectCompressedSize);
 		close(file);
 		if (ret!=PTP_RC_OK) {
@@ -1109,6 +1109,7 @@ list_files (int busn, int devn, short force)
 	int i;
 	PTPObjectInfo oi;
 	struct tm *tm;
+	uint64_t sz;
 
 	printf("\nListing files...\n");
 	if (open_camera(busn, devn, force, &ptp_usb, &params, &dev)<0)
@@ -1123,9 +1124,12 @@ list_files (int busn, int devn, short force)
 		if (oi.ObjectFormat == PTP_OFC_Association)
 			continue;
 		tm=gmtime(&oi.CaptureDate);
-		printf("0x%08lx: %12u\t%4i-%02i-%02i %02i:%02i\t%s\n",
+		if ((sz = oi.ObjectCompressedSize) == 0xffffffff)
+			ptp_getobjectsizefromproperty(&params, params.handles.Handler[i], &sz);
+
+		printf("0x%08lx: %12lu\t%4i-%02i-%02i %02i:%02i\t%s\n",
 			(long unsigned)params.handles.Handler[i],
-			(unsigned) oi.ObjectCompressedSize, 
+			sz,
 			tm->tm_year+1900, tm->tm_mon+1,tm->tm_mday,
 			tm->tm_hour, tm->tm_min,
 			oi.Filename);
@@ -1193,6 +1197,10 @@ save_object(PTPParams *params, uint32_t handle, char* filename, PTPObjectInfo oi
 	char *image;
 	int ret;
 	struct utimbuf timebuf;
+	uint64_t sz;
+
+	if ((sz = oi.ObjectCompressedSize) == 0xffffffff)
+		ptp_getobjectsizefromproperty(params, handle, &sz);
 
 	file=open(filename, (overwrite==OVERWRITE_EXISTING?0:O_EXCL)|O_RDWR|O_CREAT|O_TRUNC,S_IRWXU|S_IRGRP);
 	if (file==-1) {
@@ -1203,13 +1211,13 @@ save_object(PTPParams *params, uint32_t handle, char* filename, PTPObjectInfo oi
 		perror("open");
 		goto out;
 	}
-	lseek(file,oi.ObjectCompressedSize-1,SEEK_SET);
+	lseek(file,sz-1,SEEK_SET);
 	ret=write(file,"",1);
 	if (ret==-1) {
 	    perror("write");
 	    goto out;
 	}
-	image=mmap(0,oi.ObjectCompressedSize,PROT_READ|PROT_WRITE,MAP_SHARED,
+	image=mmap(0,sz,PROT_READ|PROT_WRITE,MAP_SHARED,
 		file,0);
 	if (image==MAP_FAILED) {
 		perror("mmap");
@@ -1218,8 +1226,8 @@ save_object(PTPParams *params, uint32_t handle, char* filename, PTPObjectInfo oi
 	}
 	printf ("Saving file: \"%s\" ",filename);
 	fflush(NULL);
-	ret=ptp_getobject(params,handle,&image);
-	munmap(image,oi.ObjectCompressedSize);
+	ret=ptp_getobject(params,handle,&image, sz);
+	munmap(image,sz);
 	if (close(file)==-1) {
 	    perror("close");
 	}

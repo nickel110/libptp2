@@ -46,6 +46,7 @@ struct _PTPContainer {
 	uint32_t Param5;
 	/* the number of meaningfull parameters */
 	uint8_t	 Nparam;
+	uint64_t length;
 };
 typedef struct _PTPContainer PTPContainer;
 
@@ -462,6 +463,12 @@ struct _PTPDevicePropDesc {
 };
 typedef struct _PTPDevicePropDesc PTPDevicePropDesc;
 
+/* Object Property Code */
+#define PTP_OPC_STORAGEID		0xDC01
+#define PTP_OPC_OBJECTFORMAT	0xDC02
+#define PTP_OPC_PROTECTIONSTAT	0xDC03
+#define PTP_OPC_OBJECTSIZE		0xDC04
+
 /* Canon filesystem's folder entry Dataset */
 
 #define PTP_CANON_FilenameBufferLen	13
@@ -724,7 +731,7 @@ typedef struct _PTPCANONFolderEntry PTPCANONFolderEntry;
 typedef struct _PTPParams PTPParams;
 
 /* raw write functions */
-typedef short (* PTPIOReadFunc)	(unsigned char *bytes, unsigned int size,
+typedef short (* PTPIOReadFunc)	(unsigned char *bytes, uint64_t size,
 				 void *data);
 typedef short (* PTPIOWriteFunc)(unsigned char *bytes, unsigned int size,
 				 void *data);
@@ -785,7 +792,7 @@ uint16_t ptp_usb_senddata	(PTPParams* params, PTPContainer* ptp,
 				unsigned char *data, unsigned int size);
 uint16_t ptp_usb_getresp	(PTPParams* params, PTPContainer* resp);
 uint16_t ptp_usb_getdata	(PTPParams* params, PTPContainer* ptp,  
-				unsigned int *getlen, unsigned char **data);
+				uint64_t *getlen, unsigned char **data);
 uint16_t ptp_usb_event_check	(PTPParams* params, PTPContainer* event);
 uint16_t ptp_usb_event_wait		(PTPParams* params, PTPContainer* event);
 
@@ -807,7 +814,7 @@ uint16_t ptp_getobjectinfo	(PTPParams *params, uint32_t handle,
 				PTPObjectInfo* objectinfo);
 
 uint16_t ptp_getobject		(PTPParams *params, uint32_t handle,
-				char** object);
+	char** object, uint64_t sz);
 uint16_t ptp_getthumb		(PTPParams *params, uint32_t handle,
 				char** object);
 
@@ -834,7 +841,7 @@ uint16_t ptp_setdevicepropvalue (PTPParams* params, uint16_t propcode,
 uint16_t ptp_sendgenericrequest (PTPParams* params, uint16_t reqcode,
 				uint32_t* reqparams, char** data,
 				uint32_t direction, long sendlen);
-
+uint16_t ptp_getobjectsizefromproperty(PTPParams *params, uint32_t handle, uint64_t *sz);
 
 uint16_t ptp_ek_sendfileobjectinfo (PTPParams* params, uint32_t* store,
 				uint32_t* parenthandle, uint32_t* handle,
