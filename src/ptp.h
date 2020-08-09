@@ -51,9 +51,10 @@ typedef struct _PTPContainer PTPContainer;
 
 /* PTP USB Bulk-Pipe container */
 /* USB bulk max max packet length for high speed endpoints */
-#define PTP_USB_BULK_HS_MAX_PACKET_LEN	512
+//#define PTP_USB_BULK_HS_MAX_PACKET_LEN	512
+#define PTP_USB_BULK_MAX_PACKET_LEN	1024
 #define PTP_USB_BULK_HDR_LEN		(2*sizeof(uint32_t)+2*sizeof(uint16_t))
-#define PTP_USB_BULK_PAYLOAD_LEN	(PTP_USB_BULK_HS_MAX_PACKET_LEN-PTP_USB_BULK_HDR_LEN)
+#define PTP_USB_BULK_PAYLOAD_LEN	(PTP_USB_BULK_MAX_PACKET_LEN-PTP_USB_BULK_HDR_LEN)
 #define PTP_USB_BULK_REQ_LEN	(PTP_USB_BULK_HDR_LEN+5*sizeof(uint32_t))
 
 struct _PTPUSBBulkContainer {
@@ -777,6 +778,9 @@ struct _PTPParams {
 	PTPObjectHandles handles;
 	PTPObjectInfo * objectinfo;
 	PTPDeviceInfo deviceinfo;
+
+	unsigned int pktlen_intr;
+	unsigned int pktlen_bulk;
 };
 
 /* last, but not least - ptp functions */

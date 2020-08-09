@@ -361,7 +361,7 @@ ptp_usb_event (PTPParams* params, PTPContainer* event, int wait)
 		return PTP_ERROR_BADPARAM;
 
 
-	CHECK_INT(usbevent, PTP_USB_INT_PACKET_LEN);
+	CHECK_INT(usbevent, params->pktlen_intr);
 	if (result<0)
 	    return PTP_ERROR_IO;
 	size=dtoh32(usbevent.length);

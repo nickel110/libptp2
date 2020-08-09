@@ -265,7 +265,7 @@ ptp_check_int (unsigned char *bytes, unsigned int size, void *data)
 	int result;
 	PTP_USB *ptp_usb=(PTP_USB *)data;
 
-	result=USB_BULK_READ(ptp_usb->handle, ptp_usb->intep,(char *)bytes,size,ptpcam_usb_timeout);
+	result=usb_interrupt_read(ptp_usb->handle, ptp_usb->intep,(char *)bytes,size,ptpcam_usb_timeout);
 	if (result==0)
 	    result=USB_BULK_READ(ptp_usb->handle, ptp_usb->intep,(char *)bytes,size,ptpcam_usb_timeout);
 	if (verbose>2) fprintf (stderr, "USB_BULK_READ returned %i, size=%i\n", result, size);
@@ -372,7 +372,7 @@ close_usb(PTP_USB* ptp_usb, struct usb_device* dev)
 	//clear_stall(ptp_usb);
         usb_release_interface(ptp_usb->handle,
                 dev->config->interface->altsetting->bInterfaceNumber);
-	usb_reset(ptp_usb->handle);
+//	usb_reset(ptp_usb->handle);
         usb_close(ptp_usb->handle);
 }
 
@@ -424,9 +424,9 @@ find_device (int busn, int devn, short force)
 }
 
 void
-find_endpoints(struct usb_device *dev, int* inep, int* outep, int* intep);
+find_endpoints(struct usb_device *dev, int* inep, int* outep, int* intep, unsigned int *maxpkt_bulk, unsigned int *maxpkt_intr);
 void
-find_endpoints(struct usb_device *dev, int* inep, int* outep, int* intep)
+find_endpoints(struct usb_device *dev, int* inep, int* outep, int* intep, unsigned int *maxpkt_bulk, unsigned int *maxpkt_intr)
 {
 	int i,n;
 	struct usb_endpoint_descriptor *ep;
@@ -440,6 +440,7 @@ find_endpoints(struct usb_device *dev, int* inep, int* outep, int* intep)
 			USB_ENDPOINT_DIR_MASK)
 		{
 			*inep=ep[i].bEndpointAddress;
+			*maxpkt_bulk =  ep[i].wMaxPacketSize;
 			if (verbose>1)
 				fprintf(stderr, "Found inep: 0x%02x\n",*inep);
 		}
@@ -454,6 +455,7 @@ find_endpoints(struct usb_device *dev, int* inep, int* outep, int* intep)
 				USB_ENDPOINT_DIR_MASK))
 		{
 			*intep=ep[i].bEndpointAddress;
+			*maxpkt_intr =  ep[i].wMaxPacketSize;
 			if (verbose>1)
 				fprintf(stderr, "Found intep: 0x%02x\n",*intep);
 		}
@@ -473,7 +475,7 @@ open_camera (int busn, int devn, short force, PTP_USB *ptp_usb, PTPParams *param
 		"bus/dev numbers\n");
 		exit(-1);
 	}
-	find_endpoints(*dev,&ptp_usb->inep,&ptp_usb->outep,&ptp_usb->intep);
+	find_endpoints(*dev,&ptp_usb->inep,&ptp_usb->outep,&ptp_usb->intep, &params->pktlen_bulk, &params->pktlen_intr);
 
 	init_ptp_usb(params, ptp_usb, *dev);
 	if (ptp_opensession(params,1)!=PTP_RC_OK) {
@@ -526,7 +528,7 @@ list_devices(short force)
 			}
 
 			find_endpoints(dev,&ptp_usb.inep,&ptp_usb.outep,
-				&ptp_usb.intep);
+				&ptp_usb.intep, &params.pktlen_bulk, &params.pktlen_intr);
 			init_ptp_usb(&params, &ptp_usb, dev);
 
 			CC(ptp_opensession (&params,1),
@@ -946,7 +948,7 @@ nikon_direct_capture2 (int busn, int devn, short force, char* filename, int over
 		"bus/dev numbers\n");
 		exit(-1);
 	}
-	find_endpoints(dev,&ptp_usb.inep,&ptp_usb.outep,&ptp_usb.intep);
+	find_endpoints(dev,&ptp_usb.inep,&ptp_usb.outep,&ptp_usb.intep, &params.pktlen_bulk, &params.pktlen_intr);
 
 	init_ptp_usb(&params, &ptp_usb, dev);
 
@@ -1926,7 +1928,7 @@ reset_device (int busn, int devn, short force)
 		"bus/dev numbers\n");
 		exit(-1);
 	}
-	find_endpoints(dev,&ptp_usb.inep,&ptp_usb.outep,&ptp_usb.intep);
+	find_endpoints(dev,&ptp_usb.inep,&ptp_usb.outep,&ptp_usb.intep, &params.pktlen_bulk, &params.pktlen_intr);
 
 	init_ptp_usb(&params, &ptp_usb, dev);
 	
