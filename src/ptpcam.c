@@ -93,6 +93,9 @@ short verbose=0;
 /* the other one, it sucks definitely ;) */
 int ptpcam_usb_timeout = USB_TIMEOUT;
 
+#define DEFAULT_RESET_DELAY 500
+unsigned int ptpcam_reset_delay = 0;
+
 /* we need it for a proper signal handling :/ */
 PTPParams* globalparams;
 
@@ -161,6 +164,7 @@ help()
 					"to disk\n"
 	"  -f, --force                  Talk to non PTP devices\n"
 	"  -v, --verbose                Be verbose (print more debug)\n"
+	"  --reset-delay[=N]            On exit, wait N(0..10000, default:500)[ms] before reset USB interface\n"
 	"  -h, --help                   Print this help message\n"
 	"\n");
 }
@@ -372,7 +376,9 @@ close_usb(PTP_USB* ptp_usb, struct usb_device* dev)
 	//clear_stall(ptp_usb);
         usb_release_interface(ptp_usb->handle,
                 dev->config->interface->altsetting->bInterfaceNumber);
-//	usb_reset(ptp_usb->handle);
+	if (ptpcam_reset_delay != 0)
+		usleep(ptpcam_reset_delay);
+	usb_reset(ptp_usb->handle);
         usb_close(ptp_usb->handle);
 }
 
@@ -2102,6 +2108,7 @@ main(int argc, char ** argv)
 		{"overwrite",0,0,0},
 		{"force",0,0,'f'},
 		{"verbose",2,0,'v'},
+		{"reset-delay",2,0,0},
 		{0,0,0,0}
 	};
 
@@ -2155,6 +2162,13 @@ main(int argc, char ** argv)
 			    !strcmp("ndc2", loptions[option_index].name))
 			{
 			    action=ACT_NIKON_DC2;
+			}
+			if (!strcmp("reset-delay", loptions[option_index].name)) {
+				ptpcam_reset_delay = (optarg == NULL) ? DEFAULT_RESET_DELAY:strtoul(optarg, NULL, 10);
+				if (ptpcam_reset_delay > 100000) 
+					ptpcam_reset_delay = 100000;
+
+				ptpcam_reset_delay *= 1000;
 			}
 			break;
 		case 'f':
