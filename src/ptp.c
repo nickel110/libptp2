@@ -126,18 +126,20 @@ ptp_usb_senddata (PTPParams* params, PTPContainer* ptp,
 			unsigned char *data, unsigned int size)
 {
 	static uint16_t ret;
+	size_t ptp_bulk_payload_len;
 	static PTPUSBBulkContainer usbdata;
 
+	ptp_bulk_payload_len = params->pktlen_bulk - PTP_USB_BULK_HDR_LEN;
 	/* build appropriate USB container */
 	usbdata.length=htod32(PTP_USB_BULK_HDR_LEN+size);
 	usbdata.type=htod16(PTP_USB_CONTAINER_DATA);
 	usbdata.code=htod16(ptp->Code);
 	usbdata.trans_id=htod32(ptp->Transaction_ID);
 	memcpy(usbdata.payload.data,data,
-		(size<PTP_USB_BULK_PAYLOAD_LEN)?size:PTP_USB_BULK_PAYLOAD_LEN);
+		(size<ptp_bulk_payload_len)?size:ptp_bulk_payload_len);
 	/* send first part of data */
 	ret=params->write_func((unsigned char *)&usbdata, PTP_USB_BULK_HDR_LEN+
-		((size<PTP_USB_BULK_PAYLOAD_LEN)?size:PTP_USB_BULK_PAYLOAD_LEN),
+		((size<ptp_bulk_payload_len)?size:ptp_bulk_payload_len),
 		params->data);
 	if (ret!=PTP_RC_OK) {
 		ret = PTP_ERROR_IO;
@@ -146,10 +148,10 @@ ptp_usb_senddata (PTPParams* params, PTPContainer* ptp,
 			ptp->Code,ret);*/
 		return ret;
 	}
-	if (size<=PTP_USB_BULK_PAYLOAD_LEN) return ret;
+	if (size<=ptp_bulk_payload_len) return ret;
 	/* if everything OK send the rest */
-	ret=params->write_func (data+PTP_USB_BULK_PAYLOAD_LEN,
-				size-PTP_USB_BULK_PAYLOAD_LEN, params->data);
+	ret=params->write_func (data+ptp_bulk_payload_len,
+				size-ptp_bulk_payload_len, params->data);
 	if (ret!=PTP_RC_OK) {
 		ret = PTP_ERROR_IO;
 /*		ptp_error (params,
@@ -164,9 +166,12 @@ ptp_usb_getdata (PTPParams* params, PTPContainer* ptp,  unsigned int *getlen,
 		unsigned char **data)
 {
 	static uint16_t ret;
+	size_t ptp_bulk_payload_len;
 	static PTPUSBBulkContainer usbdata;
 
 	PTP_CNT_INIT(usbdata);
+
+	ptp_bulk_payload_len = params->pktlen_bulk - PTP_USB_BULK_HDR_LEN;
 #if 0
 	if (*data!=NULL) return PTP_ERROR_BADPARAM;
 #endif
@@ -193,14 +198,14 @@ ptp_usb_getdata (PTPParams* params, PTPContainer* ptp,  unsigned int *getlen,
 		if (*data==NULL) *data=calloc(1,*getlen);
 		/* copy first part of data to 'data' */
 		memcpy(*data,usbdata.payload.data,
-			PTP_USB_BULK_PAYLOAD_LEN<*getlen?
-			PTP_USB_BULK_PAYLOAD_LEN:*getlen);
+			ptp_bulk_payload_len<*getlen?
+			ptp_bulk_payload_len:*getlen);
 		/* is that all of data? */
 		if (*getlen+PTP_USB_BULK_HDR_LEN<=sizeof(usbdata)) break;
 		/* if not finaly read the rest of it */
 		ret=params->read_func(((unsigned char *)(*data))+
-					PTP_USB_BULK_PAYLOAD_LEN,
-					*getlen-PTP_USB_BULK_PAYLOAD_LEN,
+					ptp_bulk_payload_len,
+					*getlen-ptp_bulk_payload_len,
 					params->data);
 		if (ret!=PTP_RC_OK) {
 			ret = PTP_ERROR_IO;
