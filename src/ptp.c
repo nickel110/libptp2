@@ -162,7 +162,7 @@ ptp_usb_senddata (PTPParams* params, PTPContainer* ptp,
 }
 
 uint16_t
-ptp_usb_getdata (PTPParams* params, PTPContainer* ptp,  unsigned int *getlen, 
+ptp_usb_getdata (PTPParams* params, PTPContainer* ptp,  uint64_t *getlen, 
 		unsigned char **data)
 {
 	static uint16_t ret;
@@ -193,7 +193,11 @@ ptp_usb_getdata (PTPParams* params, PTPContainer* ptp,  unsigned int *getlen,
 			break;
 		}
 		/* evaluate data length */
-		*getlen=dtoh32(usbdata.length)-PTP_USB_BULK_HDR_LEN;
+		if (dtoh32(usbdata.length) == ~0)
+			*getlen = ptp->length;
+		else
+			*getlen=dtoh32(usbdata.length)- PTP_USB_BULK_HDR_LEN;
+
 		/* allocate memory for data if not allocated already */
 		if (*data==NULL) *data=calloc(1,*getlen);
 		/* copy first part of data to 'data' */
@@ -315,7 +319,7 @@ ptp_transaction (PTPParams* params, PTPContainer* ptp,
 			break;
 		case PTP_DP_GETDATA:
 			{
-			unsigned int getlen;
+			uint64_t getlen;
 			CHECK_PTP_RC(params->getdata_func(params, ptp,
 				    sendlen?(unsigned int *)(((uint64_t)(&getlen)&0xffffffff00000000)|sendlen):
 				    &getlen,
@@ -619,7 +623,7 @@ ptp_getobjectinfo (PTPParams* params, uint32_t handle,
 }
 
 uint16_t
-ptp_getobject (PTPParams* params, uint32_t handle, char** object)
+ptp_getobject (PTPParams* params, uint32_t handle, char** object, uint64_t sz)
 {
 	PTPContainer ptp;
 
@@ -630,6 +634,7 @@ ptp_getobject (PTPParams* params, uint32_t handle, char** object)
 	ptp.Code=PTP_OC_GetObject;
 	ptp.Param1=handle;
 	ptp.Nparam=1;
+	ptp.length = sz;
 	return ptp_transaction(params, &ptp, PTP_DP_GETDATA, 0, object);
 }
 
@@ -870,6 +875,22 @@ ptp_sendgenericrequest (PTPParams* params, uint16_t reqcode,
 		ptp.Nparam = 5;
 
 	ret=ptp_transaction(params, &ptp, direction, sendlen, data);
+	return ret;
+}
+
+uint16_t
+ptp_getobjectsizefromproperty(PTPParams *params, uint32_t handle, uint64_t *sz)
+{
+	uint16_t ret;
+	PTPContainer ptp;
+
+	PTP_CNT_INIT(ptp);
+	ptp.Code = PTP_OC_MTP_GetObjectPropValue;
+	ptp.Param1 = handle;
+	ptp.Param2 = PTP_OPC_OBJECTSIZE;
+	ptp.Nparam = 2;
+	ret = ptp_transaction(params, &ptp, PTP_DP_GETDATA, 0, &sz);
+
 	return ret;
 }
 
