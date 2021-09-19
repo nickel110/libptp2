@@ -178,7 +178,7 @@ ptp_usb_getdata (PTPParams* params, PTPContainer* ptp,  uint64_t *getlen,
 	do {
 		/* read first(?) part of data */
 		ret=params->read_func((unsigned char *)&usbdata,
-				sizeof(usbdata), params->data);
+				params->pktlen_bulk, params->data);
 		if (ret!=PTP_RC_OK) {
 			ret = PTP_ERROR_IO;
 			break;
@@ -205,7 +205,7 @@ ptp_usb_getdata (PTPParams* params, PTPContainer* ptp,  uint64_t *getlen,
 			ptp_bulk_payload_len<*getlen?
 			ptp_bulk_payload_len:*getlen);
 		/* is that all of data? */
-		if (*getlen+PTP_USB_BULK_HDR_LEN<=sizeof(usbdata)) break;
+		if (*getlen+PTP_USB_BULK_HDR_LEN<= params->pktlen_bulk) break;
 		/* if not finaly read the rest of it */
 		ret=params->read_func(((unsigned char *)(*data))+
 					ptp_bulk_payload_len,
