@@ -93,9 +93,6 @@ short verbose=0;
 /* the other one, it sucks definitely ;) */
 int ptpcam_usb_timeout = USB_TIMEOUT;
 
-#define DEFAULT_RESET_DELAY 500
-unsigned int ptpcam_reset_delay = 0;
-
 /* we need it for a proper signal handling :/ */
 PTPParams* globalparams;
 
@@ -164,7 +161,6 @@ help()
 					"to disk\n"
 	"  -f, --force                  Talk to non PTP devices\n"
 	"  -v, --verbose                Be verbose (print more debug)\n"
-	"  --reset-delay[=N]            On exit, wait N(0..10000, default:500)[ms] before reset USB interface\n"
 	"  -h, --help                   Print this help message\n"
 	"\n");
 }
@@ -229,14 +225,16 @@ ptp_read_func (unsigned char *bytes, uint64_t size, void *data)
 			toread = rbytes;
 		result=USB_BULK_READ(ptp_usb->handle, ptp_usb->inep,(char *)bytes, toread,ptpcam_usb_timeout);
 		/* sometimes retry might help */
-		if (result==0)
+		if (result<=0) {
+			usb_clear_halt(ptp_usb->handle, ptp_usb->inep);
 			result=USB_BULK_READ(ptp_usb->handle, ptp_usb->inep,(char *)bytes, toread,ptpcam_usb_timeout);
+}
 		if (result < 0)
 			break;
 		rbytes-=PTPCAM_USB_URB;
 	} while (rbytes>0);
 
-	if (result >= 0) {
+	if (result > 0) {
 		return (PTP_RC_OK);
 	}
 	else 
@@ -253,7 +251,7 @@ ptp_write_func (unsigned char *bytes, unsigned int size, void *data)
 	PTP_USB *ptp_usb=(PTP_USB *)data;
 
 	result=USB_BULK_WRITE(ptp_usb->handle,ptp_usb->outep,(char *)bytes,size,ptpcam_usb_timeout);
-	if (result >= 0)
+	if (result > 0)
 		return (PTP_RC_OK);
 	else 
 	{
@@ -270,9 +268,12 @@ ptp_check_int (unsigned char *bytes, unsigned int size, void *data)
 	PTP_USB *ptp_usb=(PTP_USB *)data;
 
 	result=usb_interrupt_read(ptp_usb->handle, ptp_usb->intep,(char *)bytes,size,ptpcam_usb_timeout);
-	if (result==0)
-	    result=USB_BULK_READ(ptp_usb->handle, ptp_usb->intep,(char *)bytes,size,ptpcam_usb_timeout);
-	if (verbose>2) fprintf (stderr, "USB_BULK_READ returned %i, size=%i\n", result, size);
+	if (result <= 0) {
+		usb_clear_halt(ptp_usb->handle, ptp_usb->intep);
+		result=usb_interrupt_read(ptp_usb->handle, ptp_usb->intep,(char *)bytes,size,ptpcam_usb_timeout);
+	}
+
+	if (verbose>2) fprintf (stderr, "USB_INTERRUPT_READ returned %i, size=%i\n", result, size);
 
 	if (result >= 0) {
 		return result;
@@ -310,6 +311,7 @@ void
 init_ptp_usb (PTPParams* params, PTP_USB* ptp_usb, struct usb_device* dev)
 {
 	usb_dev_handle *device_handle;
+	unsigned char current_cfg;
 
 	params->write_func=ptp_write_func;
 	params->read_func=ptp_read_func;
@@ -331,7 +333,10 @@ init_ptp_usb (PTPParams* params, PTP_USB* ptp_usb, struct usb_device* dev)
 			exit(0);
 		}
 		ptp_usb->handle=device_handle;
-		usb_set_configuration(device_handle, dev->config->bConfigurationValue);
+
+		usb_control_msg(device_handle, USB_ENDPOINT_IN, USB_REQ_GET_CONFIGURATION, 0, 0, &current_cfg, 1, 1000);
+		if (dev->config->bConfigurationValue != current_cfg)
+			usb_set_configuration(device_handle, dev->config->bConfigurationValue);
 		usb_claim_interface(device_handle,
 			dev->config->interface->altsetting->bInterfaceNumber);
 	}
@@ -376,9 +381,6 @@ close_usb(PTP_USB* ptp_usb, struct usb_device* dev)
 	//clear_stall(ptp_usb);
         usb_release_interface(ptp_usb->handle,
                 dev->config->interface->altsetting->bInterfaceNumber);
-	if (ptpcam_reset_delay != 0)
-		usleep(ptpcam_reset_delay);
-	usb_reset(ptp_usb->handle);
         usb_close(ptp_usb->handle);
 }
 
@@ -485,9 +487,12 @@ open_camera (int busn, int devn, short force, PTP_USB *ptp_usb, PTPParams *param
 
 	init_ptp_usb(params, ptp_usb, *dev);
 	if (ptp_opensession(params,1)!=PTP_RC_OK) {
+		usb_clear_halt(ptp_usb->handle, ptp_usb->outep);
+		if (ptp_opensession(params,1)!=PTP_RC_OK) {
 		fprintf(stderr,"ERROR: Could not open session!\n");
 		close_usb(ptp_usb, *dev);
 		return -1;
+		}
 	}
 	if (ptp_getdeviceinfo(params,&params->deviceinfo)!=PTP_RC_OK) {
 		fprintf(stderr,"ERROR: Could not get device info!\n");
@@ -537,9 +542,12 @@ list_devices(short force)
 				&ptp_usb.intep, &params.pktlen_bulk, &params.pktlen_intr);
 			init_ptp_usb(&params, &ptp_usb, dev);
 
-			CC(ptp_opensession (&params,1),
-				"Could not open session!\n"
-				"Try to reset the camera.\n");
+			if (ptp_opensession(&params,1) != PTP_RC_OK) {
+				usb_clear_halt(ptp_usb.handle, ptp_usb.outep);
+				CC(ptp_opensession (&params,1),
+					"Could not open session!\n"
+					"Try to reset the camera.\n");
+			}
 			CC(ptp_getdeviceinfo (&params, &deviceinfo),
 				"Could not get device info!\n");
 
@@ -612,31 +620,33 @@ capture_image (int busn, int devn, short force)
 	}
 
 	/* adjust USB timeout */
-	if (ExposureTime>USB_TIMEOUT) ptpcam_usb_timeout=ExposureTime;
+	ptpcam_usb_timeout= ExposureTime > USB_CAPTURE_TIMEOUT ? ExposureTime : USB_CAPTURE_TIMEOUT;
 
 	CR(ptp_initiatecapture (&params, 0x0, 0), "Could not capture.\n");
-	
+
 	ret=ptp_usb_event_wait(&params,&event);
-	if (ret!=PTP_RC_OK) goto err;
-	if (verbose) printf ("Event received %08x, ret=%x\n", event.Code, ret);
-	if (event.Code==PTP_EC_CaptureComplete) {
-		printf ("Camera reported 'capture completed' but the object information is missing.\n");
-		goto out;
-	}
-		
-	while (event.Code==PTP_EC_ObjectAdded) {
-		printf ("Object added 0x%08lx\n", (long unsigned) event.Param1);
-		if (ptp_usb_event_wait(&params, &event)!=PTP_RC_OK)
-			goto err;
+	if (ret==PTP_RC_OK) {
 		if (verbose) printf ("Event received %08x, ret=%x\n", event.Code, ret);
 		if (event.Code==PTP_EC_CaptureComplete) {
-			printf ("Capture completed successfully!\n");
-			goto out;
+			if (ptp_usb_event_wait(&params, &event)!=PTP_RC_OK) {
+				printf ("Camera reported 'capture completed' but the object information is missing.\n");
+				goto out;
+			}
+		}
+
+		while (event.Code==PTP_EC_ObjectAdded) {
+			printf ("Object added 0x%08lx\n", (long unsigned) event.Param1);
+			if (ptp_usb_event_wait(&params, &event)!=PTP_RC_OK) {
+				printf("Events receiving error. Capture status unknown.\n");
+				break;
+			}
+			if (verbose) printf ("Event received %08x, ret=%x\n", event.Code, ret);
+			if (event.Code==PTP_EC_CaptureComplete) {
+				printf ("Capture completed successfully!\n");
+				break;
+			}
 		}
 	}
-	
-err:
-	printf("Events receiving error. Capture status unknown.\n");
 out:
 
 	ptpcam_usb_timeout=USB_TIMEOUT;
@@ -2116,7 +2126,6 @@ main(int argc, char ** argv)
 		{"overwrite",0,0,0},
 		{"force",0,0,'f'},
 		{"verbose",2,0,'v'},
-		{"reset-delay",2,0,0},
 		{0,0,0,0}
 	};
 
@@ -2170,13 +2179,6 @@ main(int argc, char ** argv)
 			    !strcmp("ndc2", loptions[option_index].name))
 			{
 			    action=ACT_NIKON_DC2;
-			}
-			if (!strcmp("reset-delay", loptions[option_index].name)) {
-				ptpcam_reset_delay = (optarg == NULL) ? DEFAULT_RESET_DELAY:strtoul(optarg, NULL, 10);
-				if (ptpcam_reset_delay > 100000) 
-					ptpcam_reset_delay = 100000;
-
-				ptpcam_reset_delay *= 1000;
 			}
 			break;
 		case 'f':
