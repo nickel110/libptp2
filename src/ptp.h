@@ -22,6 +22,10 @@
 #ifndef __PTP_H__
 #define __PTP_H__
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <stdarg.h>
 #include <time.h>
 #include "libptp-endian.h"
@@ -918,5 +922,8 @@ uint16_t ptp_prop_getcodebyname	(PTPParams* params, char* propname);
 const char* ptp_prop_getvalbyname
 				(PTPParams* params, char* name, uint16_t dpc);
 
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* __PTP_H__ */
