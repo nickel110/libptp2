@@ -745,7 +745,7 @@ typedef uint16_t (* PTPIOSendData)	(PTPParams* params, PTPContainer* ptp,
 					unsigned char *data, unsigned int size);
 typedef uint16_t (* PTPIOGetResp)	(PTPParams* params, PTPContainer* resp);
 typedef uint16_t (* PTPIOGetData)	(PTPParams* params, PTPContainer* ptp,
-					uint32_t *getlen,
+					uint64_t *getlen,
 					unsigned char **data);
 /* debug functions */
 typedef void (* PTPErrorFunc) (void *data, const char *format, va_list args);
